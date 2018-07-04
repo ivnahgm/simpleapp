@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Phones</title>
+
+    </head>
+
+    <body>
+        <h1>{{ listname }}</h1>
+        <table>
+            <tr>
+                <th>Имя</th>
+                <th>Фамилия</th>
+                <th>Моб. номер</th>
+                <th>Город</th>
+            </tr>
+            {% for entity in phones %}
+            <tr>
+                <td>{{ entity.name }}</td>
+                <td>{{ entity.surname }}</td>
+                <td>{{ entity.phone_number }}</td>
+                <td>{{ entity.city }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </body>
+</html>

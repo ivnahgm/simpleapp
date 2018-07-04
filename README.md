@@ -1,5 +1,24 @@
 # Инcтрукция по развертыванию системы
 
+## Предварительные требования
+
+Для выполнения следующих работ исполнитель должен уметь:
+
+- устанавливать дистрибутивы семейства Linux
+- знание базовых операций с помощью интерфейса коммандной строки
+  - перемещение по файловой системе
+  - создание, копирование, удаление файлов
+  - редактирование тектовых файлов
+  - создание, удаление, изменение учетных записей
+  - запуск, остановка, проверка статуса сервисов 
+  - опыт работы с пакетным менеджером yum
+
+Для выполнения исполнителю потребуется учетная запись root или учетная запись с возможностью запуска комманд с аналогичными правами через sudo
+
+Для запуска окружения рекомендуется использовать аппаратную платформу с поддержкой виртуализации. 
+
+Виртуальной машине рекомендуется выделить не менее 1Гб ОЗУ.
+
 ## Установка базовой системы
 
 1. Скачайте образ ОС Centos 7 c любого подходящего зеркала. Список всех оффициальных зеркал находится по следующему адресу [CentOS Mirror](http://isoredirect.centos.org/centos/7/isos/x86_64/CentOS-7-x86_64-Minimal-1804.iso)
@@ -9,7 +28,7 @@
 3. Обновите пакеты системы:
 
 ```
-    $ sudo yum pdate
+    $ sudo yum update
 ```
 
 ## Подготовка веб-приложения
@@ -20,7 +39,7 @@
     $ sudo yum install epel-release
 ```
 
-2. Усатнавите пакеты nginx, tomcat, java, policycoreutils-python (для настройки SELinux):
+2. Усатнавите пакеты nginx, tomcat, java, policycoreutils-python:
 
 ```
     $ sudo yum install nginx tomcat tomcat-webapps tomcat-admin-webapps java-1.8.0-openjdk policycoreutils-python
@@ -107,31 +126,39 @@ Listen 81
     $ sudo systemctl start httpd.service
 ```
 
-5. Создайте кластер postgresql:
+5. Перейдите в каталог /var/www и скачайте приложение с github:
+
+```
+  $ cd /var/www
+  $ git clone https://github.com/ivnahgm/simpleapp.git
+```
+
+6. Создайте кластер postgresql:
 
 ```
     $ postgresql-setup initdb
 ```
 
-6. В файле */var/lib/pgsql/data/pg_hba.conf* заменити в следующей строке значение **indent**:
+7. В файле */var/lib/pgsql/data/pg_hba.conf* заменити в следующей строке значение **indent**:
 
 ```
 host    all             all             127.0.0.1/32            indent
 ```
 
 на **md5**:
+
 ```
 host    all             all             127.0.0.1/32            md5
 ```
 
-7. Запустите и включите автоматическую загрузку сервиса postgresql:
+8. Запустите и включите автоматическую загрузку сервиса postgresql:
 
 ```
     $ systemctl enable postgresql.service
     $ systemctl start postgresql.service
 ```
 
-7. Создайте базу данных, пользователя и назначьте ему необходимые права:
+9. Создайте базу данных, пользователя и назначьте ему необходимые права:
 
 ```
     $ sudo -u postgres createdb <db_name>
@@ -141,26 +168,35 @@ host    all             all             127.0.0.1/32            md5
 
 *Примечание: значения <db_name> и <db_user> необходимо задать согласно вашим требованиям*
 
-8. Импортируйте схему для созданной базы данных:
+10. Импортируйте схему для созданной базы данных:
 
 ```
-    $ sudo -u postgres psql -U <db_user> -d <db_name> -h localhost < schema.sql
+    $ sudo -u postgres psql -U <db_user> -d <db_name> -h localhost < /var/www/simpleapp/initdata/schema.sql
 ```
 
-9. Запустите скрипт для первичного наполнения созданной базы данных:
+11. Заполните значения в файле /var/www/simpleapp/settings.py значениями, полученными на предыдущих шагах:
 
 ```
+DBNAME = '<db_name>' #имя базы данных
+DBUSER = '<db_user>' #пользователь базы данных
+DBPASS = '<db_password>' #пароль пользователя базы данных
+```
+
+12. Запустите скрипт для первичного наполнения созданной базы данных:
+
+```
+    $ cd /var/www/simpleapp
     $ python fill_db.py
 ```
 
-10. Создайте пользователя от которого будет запускаться wsgi-приложение:
+13. Создайте пользователя от которого будет запускаться wsgi-приложение:
 
 ```
     $ useradd -M -s /bin/false -G apache flask
     $ usermod -L flask
 ```
 
-11. Создайте файл /etc/httpd/conf.d/simpleapp.conf  со следующим содержимым:
+14. Создайте файл /etc/httpd/conf.d/simpleapp.conf  со следующим содержимым:
 
 ```
 <VirtualHost *>
@@ -178,8 +214,54 @@ host    all             all             127.0.0.1/32            md5
 </VirtualHost>
 ```
 
-12. Добавьте разрешение в SELinux:
+15. Добавьте разрешение в SELinux:
 
 ```
     $ sudo setsebool -P httpd_can_network_connect on
 ```
+
+16. Задайте владельца и группу на папку /var/www/simpleapp:
+
+```
+  $ chown -R flask:apache /var/www/simpleapp
+```
+
+17. Перезапустите сервис httpd:
+
+```
+  $ sudo systemctl restart httpd
+```
+
+## Устранение неисправностей
+
+Для диагностики рекомендуется:
+
+- Использовать просмотр журнала работы сервисов:
+
+```
+  $ sudo journalctl -u <service_name>
+```
+
+- Просмотр текущего сотояния сервиса:
+
+```
+  $ sudo systemctl status <service_name>
+```
+
+- Отключить службу firewalld:
+
+```
+  $ sudo systemctl stop firewalld
+```
+
+- Отключить SELinux:
+
+```
+  $ sudo setenforce 0
+```
+
+- Просмотр журналов запросов httpd /var/log/httpd/*
+
+- Просмотр журналов запросов nginx /var/log/nginx/*
+
+- Просмотр журналов SELinux /var/log/audit/audit.log
